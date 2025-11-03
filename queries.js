@@ -6,6 +6,38 @@ module.exports = {
   `,
 
   getUserByEmail: `
-    SELECT * FROM users WHERE email = $1;
-  `
+    SELECT 
+      u.id,
+      u.email,
+      u.full_name,
+      u.password_hash,
+      a.cardnum,
+      a.funds
+    FROM users u
+    JOIN accounts a ON u.id = a.id
+    WHERE u.email = $1;
+  `,
+  addFunds: `
+    UPDATE accounts
+    SET funds = funds + $2
+    WHERE id = $1
+    RETURNING funds;
+  `,
+
+  withdrawFunds: `
+    UPDATE accounts
+    SET funds = funds - $2
+    WHERE id = $1
+    RETURNING funds;
+  `,
+  addEarningRecord: `
+  INSERT INTO earnings (id, year, month, day, amount, sender)
+  VALUES ($1, $2, $3, $4, $5, $6);
+`,
+addSpendingRecord: `
+  INSERT INTO spendings (id, year, month, day, amount, category)
+  VALUES ($1, $2, $3, $4, $5, $6);
+`,
+
+
 };

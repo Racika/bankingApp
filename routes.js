@@ -1,14 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const controller = require('./controller');
+const verifyToken = require("./middleware/auth");
+router.get("/me", verifyToken, controller.getMe);
 
 
 router.post('/users', controller.addUser);
 router.post('/login', controller.login);
-router.get('/user/:email', async (req, res) => {
-  const result = await pool.query(queries.getUserByEmail, [req.params.email]);
-  const user = result.rows[0];
-  res.json({ fullName: user.full_name, email: user.email });
-});
+router.get('/user/:email', controller.getUserWithAccount);
+router.post('/addFunds', verifyToken, controller.addFunds);
+router.post('/withdrawFunds', verifyToken, controller.withdrawFunds);
+router.post('/transferMoney', verifyToken, controller.transferMoney);
+router.post('/spendMoney', verifyToken, controller.spendMoney);
+
+
+
+
+
 
 module.exports = router;
