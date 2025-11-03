@@ -38,6 +38,19 @@ addSpendingRecord: `
   INSERT INTO spendings (id, year, month, day, amount, category)
   VALUES ($1, $2, $3, $4, $5, $6);
 `,
+getSpendingsByMonth: `
+  SELECT day, amount, category
+  FROM spendings
+  WHERE id = $1 
+  AND LOWER(TRIM(month)) = LOWER(TRIM($2))
+  ORDER BY day ASC;
+`,
+getEarningsByMonth: `
+  SELECT day, amount, sender 
+  FROM earnings
+  WHERE id = $1 AND month = $2
+  ORDER BY day ASC;
+`,
 
 
 };

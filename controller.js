@@ -169,7 +169,7 @@ async function transferMoney(req, res) {
     if (fromCard === toCard)
       return res.status(400).json({ error: "Cannot send money to the same card" });
 
-    D
+    
     const recipientQuery = await pool.query(
       "SELECT id FROM accounts WHERE cardnum = $1",
       [toCard]
@@ -317,6 +317,45 @@ async function spendMoney(req, res) {
   }
 }
 
+async function getSpendings(req, res) {
+  try {
+    const { userId, month } = req.body;
+
+    if (!userId || !month) {
+      return res.status(400).json({ error: "Missing userId or month" });
+    }
+
+    const result = await pool.query(
+      queries.getSpendingsByMonth,
+      [userId, month]
+    );
+
+    return res.json(result.rows);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+}
+
+async function getEarnings(req, res) {
+  try {
+    const { userId, month } = req.body;
+    if (!userId || !month) return res.status(400).json({ error: "Missing fields" });
+
+    const result = await pool.query(
+      queries.getEarningsByMonth,
+      [userId, month]
+    );
+
+    return res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
+}
+
+
 module.exports = {
-  addUser,login,getUserWithAccount,getMe,withdrawFunds,addFunds,transferMoney,spendMoney
+  addUser,login,getUserWithAccount,getMe,withdrawFunds,addFunds,transferMoney,spendMoney,getSpendings,getEarnings
 };

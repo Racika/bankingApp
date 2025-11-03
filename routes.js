@@ -12,10 +12,7 @@ router.post('/addFunds', verifyToken, controller.addFunds);
 router.post('/withdrawFunds', verifyToken, controller.withdrawFunds);
 router.post('/transferMoney', verifyToken, controller.transferMoney);
 router.post('/spendMoney', verifyToken, controller.spendMoney);
-
-
-
-
-
+router.post("/spendings", verifyToken, controller.getSpendings);
+router.post("/earnings", verifyToken, controller.getEarnings);
 
 module.exports = router;
