@@ -51,6 +51,22 @@ getEarningsByMonth: `
   WHERE id = $1 AND month = $2
   ORDER BY day ASC;
 `,
+createRequest: `
+  INSERT INTO requests (recipient_cardnum, requester_cardnum, requester_name, amount)
+  VALUES ($1, $2, $3, $4)
+  RETURNING request_id, recipient_cardnum, requester_cardnum, requester_name, amount, created_at;
+`,
+getRequestsForUser: `
+  SELECT request_id, requester_cardnum, requester_name, amount, created_at
+  FROM requests
+  WHERE recipient_cardnum = $1
+  ORDER BY created_at DESC;
+`,
+deleteRequest: `
+  DELETE FROM requests
+  WHERE request_id = $1;
+`
+
 
 
 };

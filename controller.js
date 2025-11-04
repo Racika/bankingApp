@@ -354,8 +354,70 @@ async function getEarnings(req, res) {
     res.status(500).json({ error: "Server error" });
   }
 }
+async function createRequest(req, res) {
+  try {
+    const { recipientCard, requesterCard, requesterName, amount } = req.body;
+
+    if (!recipientCard || !requesterCard || !requesterName || !amount) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const result = await pool.query(
+      queries.createRequest,
+      [recipientCard, requesterCard, requesterName, amount]
+    );
+
+    return res.json({
+      message: "Request created successfully",
+      request: result.rows[0],
+    });
+
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Server error" });
+  }
+}
+async function getRequestsForUser(req, res) {
+  try {
+    const { cardnum } = req.body;
+
+    if (!cardnum) {
+      return res.status(400).json({ error: "Card number required" });
+    }
+
+    const result = await pool.query(
+      queries.getRequestsForUser,
+      [cardnum]
+    );
+
+    return res.json(result.rows);
+
+  } catch (err) {
+    console.error("Error fetching requests:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+}
+async function deleteRequest(req, res) {
+  try {
+    const { request_id } = req.body;
+
+    if (!request_id) {
+      return res.status(400).json({ error: "Request ID required" });
+    }
+
+    const result = await pool.query(queries.deleteRequest, [request_id]);
+
+    return res.json({ success: true, message: "Request deleted" });
+
+  } catch (err) {
+    console.error("Error deleting request:", err);
+    return res.status(500).json({ error: "Server error" });
+  }
+}
+
 
 
 module.exports = {
-  addUser,login,getUserWithAccount,getMe,withdrawFunds,addFunds,transferMoney,spendMoney,getSpendings,getEarnings
+  addUser,login,getUserWithAccount,getMe,withdrawFunds,addFunds,transferMoney,spendMoney,getSpendings,getEarnings,createRequest,getRequestsForUser,
+  deleteRequest
 };
