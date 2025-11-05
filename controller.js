@@ -61,7 +61,8 @@ async function getMe(req, res) {
     email: user.email,
     fullName: user.full_name,
     cardnum: user.cardnum,
-    funds: user.funds
+    funds: user.funds,
+    savings: user.savings
   });
 }
 
@@ -82,7 +83,8 @@ async function getUserWithAccount(req, res) {
     fullName: user.full_name,
     email: user.email,
     cardnum: user.cardnum,
-    funds: user.funds
+    funds: user.funds,
+    savings: user.savings
   });
 }
 
@@ -257,65 +259,76 @@ async function transferMoney(req, res) {
 }
 
 async function spendMoney(req, res) {
+  const { userId, amount, category } = req.body;
+  const client = await pool.connect();
+
   try {
-    const { cardnum, amount, category } = req.body;
+    // Get savings settings
+    const settingsRes = await client.query(queries.getSavingsSettings, [userId]);
+    const settings = settingsRes.rows[0];
 
-    if (!cardnum || !amount || amount <= 0 || !category)
-      return res.status(400).json({ error: "Invalid parameters" });
+    let roundUp = 0;
 
-    
-    const cardCheck = await pool.query(
-      `SELECT a.id, a.funds, u.full_name
-       FROM accounts a 
-       JOIN users u ON u.id = a.id
-       WHERE a.cardnum = $1`,
-      [cardnum]
+    if (settings && settings.round_up_enabled) {
+      if (amount < settings.small_purchase_trigger) {
+        roundUp = settings.small_purchase_amount;
+      } else {
+        roundUp = settings.big_purchase_amount;
+      }
+    }
+
+    const totalDebit = Number(amount) + Number(roundUp);
+
+    // Check balance
+    const fundsRes = await client.query(
+      `SELECT funds FROM accounts WHERE id = $1`,
+      [userId]
     );
+    const currentFunds = Number(fundsRes.rows[0].funds);
 
-    if (cardCheck.rows.length === 0)
-      return res.json({ success: false, message: "Card not found" });
-
-    const userId = cardCheck.rows[0].id;
-    const currentFunds = parseFloat(cardCheck.rows[0].funds);
-
-    
-    if (currentFunds < amount)
-      return res.json({
-        success: false,
-        message: "Insufficient funds",
-        funds: currentFunds
+    if (currentFunds < totalDebit) {
+      return res.status(400).json({
+        error: "Insufficient funds including round-up."
       });
+    }
 
-    
-    const update = await pool.query(
-      "UPDATE accounts SET funds = funds - $2 WHERE cardnum = $1 RETURNING funds",
-      [cardnum, amount]
+    // Deduct main spend
+    await client.query(
+      `UPDATE accounts SET funds = funds - $1 WHERE id = $2`,
+      [amount, userId]
     );
 
-    const newFunds = update.rows[0].funds;
-
-    
-    const now = new Date();
-    await pool.query(queries.addSpendingRecord, [
+    // Insert spending record
+    const date = new Date();
+    await client.query(queries.addSpendingRecord, [
       userId,
-      now.getFullYear(),
-      now.toLocaleString("default", { month: "long" }),
-      now.getDate(),
+      date.getFullYear(),
+      date.toLocaleString("en-US", { month: "long" }),
+      date.getDate(),
       amount,
       category
     ]);
 
-    return res.json({
+    // Handle round-up savings
+    if (roundUp > 0) {
+      await client.query(queries.updateSavings, [userId, roundUp]);
+      await client.query(queries.insertSavingsTx, [userId, roundUp, category]);
+    }
+
+    res.json({
       success: true,
-      message: "Purchase logged",
-      funds: newFunds
+      spent: amount,
+      roundedToSavings: roundUp,
     });
 
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Server error" });
+    console.error("SpendMoney error:", err);
+    res.status(500).json({ error: "Spend failed" });
+  } finally {
+    client.release();
   }
 }
+
 
 async function getSpendings(req, res) {
   try {
@@ -414,10 +427,55 @@ async function deleteRequest(req, res) {
     return res.status(500).json({ error: "Server error" });
   }
 }
+async function updateSavingsSettings(req, res) {
+  const { userId, round_up_enabled, goal } = req.body;
+
+  try {
+    await pool.query(queries.updateSavingsSettings, [
+      userId,
+      round_up_enabled,
+      goal
+    ]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("UpdateSavingsSettings error:", err);
+    res.status(500).json({ error: "Settings update failed" });
+  }
+}
+async function getSavingsSettings(req, res) {
+  const { userId } = req.body;
+
+  try {
+    const result = await pool.query(queries.getSavingsSettings, [userId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Savings settings not found" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("getSavingsSettings error:", err);
+    return res.status(500).json({ error: "Failed to retrieve savings settings" });
+  }
+}
+async function getSavingsTransactions(req, res) {
+  const { userId } = req.body;
+
+  try {
+    const result = await pool.query(queries.getSavingsTransactions, [userId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("getSavingsTransactions error:", err);
+    return res.status(500).json({ error: "Failed to retrieve savings transactions" });
+  }
+}
+
+
 
 
 
 module.exports = {
   addUser,login,getUserWithAccount,getMe,withdrawFunds,addFunds,transferMoney,spendMoney,getSpendings,getEarnings,createRequest,getRequestsForUser,
-  deleteRequest
+  deleteRequest,updateSavingsSettings,getSavingsSettings,getSavingsTransactions
 };

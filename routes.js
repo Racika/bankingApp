@@ -17,5 +17,9 @@ router.post("/earnings", verifyToken, controller.getEarnings);
 router.post("/requestPayment", verifyToken, controller.createRequest);
 router.post("/getRequests", verifyToken, controller.getRequestsForUser);
 router.post("/deleteRequest", verifyToken, controller.deleteRequest);
+router.post("/updateSavingsSettings", verifyToken, controller.updateSavingsSettings);
+router.post("/getSavingsSettings", verifyToken, controller.getSavingsSettings);
+router.post("/getSavingsTransactions", verifyToken, controller.getSavingsTransactions);
+
 
 module.exports = router;

@@ -12,7 +12,8 @@ module.exports = {
       u.full_name,
       u.password_hash,
       a.cardnum,
-      a.funds
+      a.funds,
+      a.savings
     FROM users u
     JOIN accounts a ON u.id = a.id
     WHERE u.email = $1;
@@ -65,8 +66,43 @@ getRequestsForUser: `
 deleteRequest: `
   DELETE FROM requests
   WHERE request_id = $1;
-`
+`,
+updateSavings: `
+  UPDATE accounts
+  SET savings = savings + $2, funds = funds - $2
+  WHERE id = $1
+  RETURNING savings, funds;
+`,
 
+getSavingsSettings: `
+  SELECT round_up_enabled, small_purchase_trigger, small_purchase_amount, big_purchase_amount, goal
+  FROM savings_settings
+  WHERE user_id = $1;
+`,
 
+updateSavingsSettings: `
+  UPDATE savings_settings
+  SET round_up_enabled = $2,
+      goal = $3,
+      updated_at = NOW()
+  WHERE user_id = $1;
+`,
+
+insertSavingsTx: `
+  INSERT INTO savings_transactions (user_id, amount, category)
+  VALUES ($1, $2, $3);
+`,
+getSavingsSettings: `
+  SELECT *
+  FROM savings_settings
+  WHERE user_id = $1
+`,
+
+getSavingsTransactions: `
+  SELECT amount, category, created_at
+  FROM savings_transactions
+  WHERE user_id = $1
+  ORDER BY created_at DESC
+`,
 
 };
