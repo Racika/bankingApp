@@ -164,7 +164,12 @@ async function addFunds(req, res) {
 // TRANSFER MONEY
 async function transferMoney(req, res) {
   try {
-    const { fromCard, toCard, amount } = req.body;
+    let { fromCard, toCard, amount } = req.body;
+
+    // Convert to proper types
+    fromCard = parseInt(fromCard);
+    toCard = parseInt(toCard);
+    amount = Number(amount);
 
     if (!fromCard || !toCard || !amount || amount <= 0)
       return res.status(400).json({ error: "Invalid parameters" });
@@ -211,10 +216,10 @@ async function transferMoney(req, res) {
       });
 
     // Deduct from sender
-    await pool.query("UPDATE accounts SET funds = funds - $2 WHERE cardnum = $1", [
-      fromCard,
-      amount,
-    ]);
+    await pool.query(
+      "UPDATE accounts SET funds = funds - $2 WHERE cardnum = $1",
+      [fromCard, amount]
+    );
 
     const now = new Date();
 
@@ -264,6 +269,7 @@ async function transferMoney(req, res) {
     return res.status(500).json({ error: "Server error" });
   }
 }
+
 
 
 async function spendMoney(req, res) {
