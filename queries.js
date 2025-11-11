@@ -104,5 +104,20 @@ getSavingsTransactions: `
   WHERE user_id = $1
   ORDER BY created_at DESC
 `,
+insertRecentRequest: `
+  INSERT INTO recent_requests (id, requested_number, requested_name)
+  VALUES ($1, $2, $3)
+  ON CONFLICT (id, requested_number) DO UPDATE
+  SET requested_name = EXCLUDED.requested_name,
+      created_at = NOW();
+`,
+
+getRecentRequests: `
+  SELECT requested_number, requested_name, created_at
+  FROM recent_requests
+  WHERE id = $1
+  ORDER BY created_at DESC;
+`,
+
 
 };

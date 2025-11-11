@@ -20,6 +20,7 @@ router.post("/deleteRequest", verifyToken, controller.deleteRequest);
 router.post("/updateSavingsSettings", verifyToken, controller.updateSavingsSettings);
 router.post("/getSavingsSettings", verifyToken, controller.getSavingsSettings);
 router.post("/getSavingsTransactions", verifyToken, controller.getSavingsTransactions);
+router.post("/getRecentRequests", verifyToken, controller.getRecentRequests);
 
 
 module.exports = router;

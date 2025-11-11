@@ -161,6 +161,7 @@ async function addFunds(req, res) {
     return res.status(500).json({ error: "Server error" });
   }
 }
+// TRANSFER MONEY
 async function transferMoney(req, res) {
   try {
     const { fromCard, toCard, amount } = req.body;
@@ -171,19 +172,24 @@ async function transferMoney(req, res) {
     if (fromCard === toCard)
       return res.status(400).json({ error: "Cannot send money to the same card" });
 
-    
+    // Fetch recipient
     const recipientQuery = await pool.query(
-      "SELECT id FROM accounts WHERE cardnum = $1",
+      `SELECT a.id, u.full_name 
+       FROM accounts a 
+       JOIN users u ON u.id = a.id
+       WHERE a.cardnum = $1`,
       [toCard]
     );
+
     if (recipientQuery.rows.length === 0)
       return res.json({ success: false, message: "Recipient card not found" });
 
     const recipientId = recipientQuery.rows[0].id;
+    const recipientName = recipientQuery.rows[0].full_name;
 
-    
+    // Fetch sender
     const senderQuery = await pool.query(
-      `SELECT a.id, a.funds, u.full_name
+      `SELECT a.id, a.funds, u.full_name 
        FROM accounts a 
        JOIN users u ON u.id = a.id
        WHERE a.cardnum = $1`,
@@ -195,36 +201,34 @@ async function transferMoney(req, res) {
 
     const senderId = senderQuery.rows[0].id;
     const senderFunds = parseFloat(senderQuery.rows[0].funds);
-    const senderName = senderQuery.rows[0].full_name; 
+    const senderName = senderQuery.rows[0].full_name;
 
     if (senderFunds < amount)
       return res.json({
         success: false,
         message: "Insufficient funds",
-        funds: senderFunds
+        funds: senderFunds,
       });
 
-  
-    await pool.query(
-      "UPDATE accounts SET funds = funds - $2 WHERE cardnum = $1",
-      [fromCard, amount]
-    );
+    // Deduct from sender
+    await pool.query("UPDATE accounts SET funds = funds - $2 WHERE cardnum = $1", [
+      fromCard,
+      amount,
+    ]);
 
-    
     const now = new Date();
-    await pool.query(
-      queries.addSpendingRecord,
-      [
-        senderId,
-        now.getFullYear(),
-        now.toLocaleString("default", { month: "long" }),
-        now.getDate(),
-        amount,
-        "transfer"
-      ]
-    );
 
-    
+    // Record spending
+    await pool.query(queries.addSpendingRecord, [
+      senderId,
+      now.getFullYear(),
+      now.toLocaleString("default", { month: "long" }),
+      now.getDate(),
+      amount,
+      "transfer",
+    ]);
+
+    // Add to recipient
     const result = await pool.query(
       "UPDATE accounts SET funds = funds + $2 WHERE cardnum = $1 RETURNING funds",
       [toCard, amount]
@@ -232,31 +236,35 @@ async function transferMoney(req, res) {
 
     const newRecipientFunds = result.rows[0].funds;
 
-    
-    await pool.query(
-      queries.addEarningRecord,
-      [
-        recipientId,
-        now.getFullYear(),
-        now.toLocaleString("default", { month: "long" }),
-        now.getDate(),
-        amount,
-        senderName 
-      ]
-    );
+    // Record earning
+    await pool.query(queries.addEarningRecord, [
+      recipientId,
+      now.getFullYear(),
+      now.toLocaleString("default", { month: "long" }),
+      now.getDate(),
+      amount,
+      senderName,
+    ]);
+
+    // Add to recent requests (recent transfer target)
+    await pool.query(queries.insertRecentRequest, [
+      senderId,
+      toCard,
+      recipientName,
+    ]);
 
     return res.json({
       success: true,
       message: "Transfer successful",
       sender: senderName,
-      recipientFunds: newRecipientFunds
+      recipientFunds: newRecipientFunds,
     });
-
   } catch (err) {
-    console.error(err);
+    console.error("transferMoney error:", err);
     return res.status(500).json({ error: "Server error" });
   }
 }
+
 
 async function spendMoney(req, res) {
   const { userId, amount, category } = req.body;
@@ -367,6 +375,7 @@ async function getEarnings(req, res) {
     res.status(500).json({ error: "Server error" });
   }
 }
+// CREATE REQUEST (for money requests)
 async function createRequest(req, res) {
   try {
     const { recipientCard, requesterCard, requesterName, amount } = req.body;
@@ -375,21 +384,53 @@ async function createRequest(req, res) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const result = await pool.query(
-      queries.createRequest,
-      [recipientCard, requesterCard, requesterName, amount]
+    // Get requester ID (the sender)
+    const requesterQuery = await pool.query(
+      "SELECT id FROM accounts WHERE cardnum = $1",
+      [requesterCard]
     );
+
+    if (requesterQuery.rows.length === 0)
+      return res.status(404).json({ error: "Requester not found" });
+
+    const requesterId = requesterQuery.rows[0].id;
+
+    // Get recipient info (so we can store their name & card)
+    const recipientQuery = await pool.query(
+      "SELECT u.full_name FROM users u JOIN accounts a ON u.id = a.id WHERE a.cardnum = $1",
+      [recipientCard]
+    );
+
+    if (recipientQuery.rows.length === 0)
+      return res.status(404).json({ error: "Recipient not found" });
+
+    const recipientName = recipientQuery.rows[0].full_name;
+
+    // Create the money request
+    const result = await pool.query(queries.createRequest, [
+      recipientCard,
+      requesterCard,
+      requesterName,
+      amount,
+    ]);
+
+    // Add to recent requests
+    await pool.query(queries.insertRecentRequest, [
+      requesterId,
+      recipientCard,
+      recipientName,
+    ]);
 
     return res.json({
       message: "Request created successfully",
       request: result.rows[0],
     });
-
   } catch (err) {
-    console.error(err);
+    console.error("createRequest error:", err);
     return res.status(500).json({ error: "Server error" });
   }
 }
+
 async function getRequestsForUser(req, res) {
   try {
     const { cardnum } = req.body;
@@ -471,11 +512,36 @@ async function getSavingsTransactions(req, res) {
   }
 }
 
+const addRecentRequest = async (userId, requestedNumber, requestedName) => {
+  try {
+    await pool.query(queries.insertRecentRequest, [
+      userId,
+      requestedNumber,
+      requestedName,
+    ]);
+  } catch (err) {
+    console.error("Error inserting recent request:", err);
+  }
+};
+
+
+const getRecentRequests = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const result = await pool.query(queries.getRecentRequests, [userId]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching recent requests:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+
 
 
 
 
 module.exports = {
   addUser,login,getUserWithAccount,getMe,withdrawFunds,addFunds,transferMoney,spendMoney,getSpendings,getEarnings,createRequest,getRequestsForUser,
-  deleteRequest,updateSavingsSettings,getSavingsSettings,getSavingsTransactions
+  deleteRequest,updateSavingsSettings,getSavingsSettings,getSavingsTransactions,addRecentRequest,getRecentRequests
 };
